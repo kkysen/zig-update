@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { encode as encodeToHex } from "https://deno.land/std/encoding/hex.ts";
 import * as pathLib from "https://deno.land/std/path/mod.ts";
+import { parse } from "https://deno.land/std/flags/mod.ts";
 
 interface RawArchive {
   tarball: string;
@@ -157,11 +158,11 @@ async function getCurrentPlatform(): Promise<Platform> {
 
 function getReleaseWithVersion(
   releases: Releases,
-  version: string | undefined,
+  version: string,
 ): Release {
-  return version
-    ? releases[version]
-    : Object.values(releases).filter((e) => e.meta.version !== "master")[0];
+  return version === "latest"
+    ? Object.values(releases).filter((e) => e.meta.version !== "master")[0]
+    : releases[version];
 }
 
 async function computeHash(
@@ -253,11 +254,12 @@ async function unpackArchive(archive: Archive) {
   }
 }
 
+const currentLinkName = "current";
+
 async function setArchiveToCurrent(archive: Archive) {
-  const current = "current";
   let currentLink;
   try {
-    currentLink = await Deno.readLink(current);
+    currentLink = await Deno.readLink(currentLinkName);
   } catch {
     currentLink = undefined;
   }
@@ -266,20 +268,46 @@ async function setArchiveToCurrent(archive: Archive) {
   } else {
     console.log(`setting version to ${archive.version}`);
   }
-  const tempPath = `${archive.dirPath}.${current}`;
+  const tempPath = `${archive.dirPath}.${currentLinkName}`;
   await Deno.symlink(archive.dirPath, tempPath);
-  await Deno.rename(tempPath, current);
+  await Deno.rename(tempPath, currentLinkName);
+}
+
+async function updateArchive(archive: Archive) {
+  await saveArchive(archive);
+  await unpackArchive(archive);
+}
+
+async function removeArchive(archive: Archive) {
+  await Deno.remove(archive.dirPath, { recursive: true });
+  await Deno.remove(archive.filePath);
 }
 
 async function main() {
-  const [version] = Deno.args;
+  const args = parse(Deno.args, {
+    alias: {
+      "rm": "remove",
+      "delete": "remove",
+    },
+    default: {
+      "version": "latest",
+      "set": true,
+    },
+    boolean: ["remove", "set"],
+  });
+  console.log(args);
   const releases = await downloadReleaseInfo();
   const platform = await getCurrentPlatform();
-  const release = getReleaseWithVersion(releases, version);
+  const release = getReleaseWithVersion(releases, args.version);
   const archive = release.platforms[`${platform.arch}-${platform.os}`];
-  await saveArchive(archive);
-  await unpackArchive(archive);
-  await setArchiveToCurrent(archive);
+  if (args.remove) {
+    await removeArchive(archive);
+  } else {
+    await updateArchive(archive);
+    if (args.set) {
+      await setArchiveToCurrent(archive);
+    }
+  }
 }
 
 await main();
