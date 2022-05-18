@@ -18,23 +18,16 @@ interface Archive {
   url: URL;
   filePath: string;
   dirPath: string;
-  unArchiveCommand: string[];
 }
 
-function prepareToUnArchive(path: string): { dir: string; command: string[] } {
+function archiveDir(path: string): string {
   const i = path.lastIndexOf(".tar");
   if (i !== -1) {
-    return {
-      dir: path.slice(0, i),
-      command: ["tar", "xf"],
-    };
+    return path.slice(0, i);
   }
   const parts = pathLib.parse(path);
   if (parts.ext === ".zip") {
-    return {
-      dir: parts.name,
-      command: ["zip"],
-    };
+    return parts.name;
   }
   throw new Error(`unknown archive extension for ${path}`);
 }
@@ -47,7 +40,7 @@ function archiveFromRaw(
   const { tarball, shasum, size } = raw;
   const url = new URL(tarball);
   const filePath = pathLib.basename(url.pathname);
-  const unArchive = prepareToUnArchive(filePath);
+  const dirPath = archiveDir(filePath);
   return {
     version,
     platform,
@@ -55,8 +48,7 @@ function archiveFromRaw(
     shasum,
     url,
     filePath,
-    dirPath: unArchive.dir,
-    unArchiveCommand: unArchive.command,
+    dirPath,
   };
 }
 
@@ -243,7 +235,7 @@ async function unpackArchive(archive: Archive) {
     console.log(`archive already unpacked: ${archive.dirPath}`);
     return;
   }
-  const cmd = [...archive.unArchiveCommand, archive.filePath];
+  const cmd = ["tar", "xf", archive.filePath];
   const cmdString = cmd.map(quote).join(" ");
   console.log(`unpacking archive: ${archive.filePath}`);
   console.log(`running: ${cmdString}`);
