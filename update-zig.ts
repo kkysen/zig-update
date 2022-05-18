@@ -284,10 +284,10 @@ async function setArchiveToCurrent(archive: Archive) {
     console.log(`version already set to ${archive.version}`);
   } else {
     console.log(`setting version to ${archive.version}`);
+    const tempPath = `${archive.dirPath}.${currentLinkName}`;
+    await Deno.symlink(archive.dirPath, tempPath);
+    await Deno.rename(tempPath, currentLinkName);
   }
-  const tempPath = `${archive.dirPath}.${currentLinkName}`;
-  await Deno.symlink(archive.dirPath, tempPath);
-  await Deno.rename(tempPath, currentLinkName);
   const zigEnv = await getZigEnv();
   if (
     zigEnv?.zig_exe ===

@@ -8,5 +8,5 @@ deno install \
     --allow-env=HOME,USERPROFILE,PATH \
     --allow-read \
     --allow-write \
-    https://raw.githubusercontent.com/kkysen/zig-update/main/update-zig.ts \
-    "${@}"
+    "${@}" \
+    https://raw.githubusercontent.com/kkysen/zig-update/main/update-zig.ts
