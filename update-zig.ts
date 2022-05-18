@@ -112,28 +112,37 @@ async function downloadReleaseInfo(): Promise<Releases> {
   );
 }
 
-interface Platform {
-  arch: string;
-  os: string;
-}
+type Json = unknown[] | Record<string, unknown>;
 
-async function getCurrentPlatform(): Promise<Platform> {
+async function runZigToJson<T extends object = Json>(
+  args: string[],
+): Promise<T | undefined> {
   let process;
   try {
     process = Deno.run({
-      cmd: ["zig", "targets"],
+      cmd: ["zig", ...args],
       stdout: "piped",
     });
   } catch (e) {
     if (e.name === "NotFound") {
-      return Deno.build;
+      return;
     } else {
       throw e;
     }
   }
   const stdoutBuffer = await process.output();
   const stdoutString = new TextDecoder().decode(stdoutBuffer);
-  const targets = JSON.parse(stdoutString) as {
+  const json = JSON.parse(stdoutString);
+  return json as T;
+}
+
+interface Platform {
+  arch: string;
+  os: string;
+}
+
+async function getCurrentPlatform(): Promise<Platform> {
+  const targets = await runZigToJson<{
     native: {
       triple: string;
       cpu: {
@@ -144,9 +153,24 @@ async function getCurrentPlatform(): Promise<Platform> {
       os: string;
       abi: string;
     };
-  };
+  }>(["targets"]);
+  if (!targets) {
+    return Deno.build;
+  }
   const { native: { cpu: { arch }, os } } = targets;
   return { arch, os };
+}
+
+interface ZigEnv {
+  zig_exe: string;
+  lib_dir: string;
+  std_dir: string;
+  global_cache_dir: string;
+  version: string;
+}
+
+async function getZigEnv(): Promise<ZigEnv | undefined> {
+  return await runZigToJson<ZigEnv>(["env"]);
 }
 
 function getReleaseWithVersion(
@@ -264,6 +288,21 @@ async function setArchiveToCurrent(archive: Archive) {
   const tempPath = `${archive.dirPath}.${currentLinkName}`;
   await Deno.symlink(archive.dirPath, tempPath);
   await Deno.rename(tempPath, currentLinkName);
+  const zigEnv = await getZigEnv();
+  if (
+    zigEnv?.zig_exe ===
+      await Deno.realPath(pathLib.join(currentLinkName, "zig"))
+  ) {
+    // on path
+  } else {
+    const currentZigDir = pathLib.join(Deno.cwd(), currentLinkName);
+    console.log(
+      `add zig dir to $PATH: ${currentZigDir}\n` +
+        `or zig binary to a dir on $PATH: ${
+          pathLib.join(currentZigDir, "zig")
+        }`,
+    );
+  }
 }
 
 async function updateArchive(archive: Archive) {
@@ -289,12 +328,15 @@ async function main() {
     boolean: ["remove", "set"],
   });
   console.log(args);
-  const homeDir = dir("home");
-  if (!homeDir) {
-    throw new Error(`can't find home directory`);
-  }
-  const zigDir = pathLib.join(homeDir, ".zig");
+  const zigDir = args.dir ?? (() => {
+    const homeDir = dir("home");
+    if (!homeDir) {
+      throw new Error(`can't find home directory`);
+    }
+    return pathLib.join(homeDir, ".zig");
+  })();
   Deno.mkdir(zigDir, { recursive: true });
+  console.log(`cd ${quote(zigDir)}`);
   Deno.chdir(zigDir);
   const releases = await downloadReleaseInfo();
   const platform = await getCurrentPlatform();
