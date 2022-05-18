@@ -2,6 +2,7 @@ import { assert, assertEquals } from "https://deno.land/std/testing/asserts.ts";
 import { encode as encodeToHex } from "https://deno.land/std/encoding/hex.ts";
 import * as pathLib from "https://deno.land/std/path/mod.ts";
 import { parse } from "https://deno.land/std/flags/mod.ts";
+import dir from "https://deno.land/x/dir/mod.ts";
 
 interface RawArchive {
   tarball: string;
@@ -296,6 +297,13 @@ async function main() {
     boolean: ["remove", "set"],
   });
   console.log(args);
+  const homeDir = dir("home");
+  if (!homeDir) {
+    throw new Error(`can't find home directory`);
+  }
+  const zigDir = pathLib.join(homeDir, ".zig");
+  Deno.mkdir(zigDir, { recursive: true });
+  Deno.chdir(zigDir);
   const releases = await downloadReleaseInfo();
   const platform = await getCurrentPlatform();
   const release = getReleaseWithVersion(releases, args.version);
